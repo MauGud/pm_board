@@ -18,6 +18,7 @@ import { supabase } from './lib/supabase'
 import KanbanBoard from './components/KanbanBoard'
 import UserStoryGuide from './components/UserStoryGuide'
 import ParkingLot from './components/ParkingLot'
+import { TeamTagsSelector, TeamTag, TEAM_MEMBERS } from './components/TeamTagsSelector'
 
 const formatStoryId = (id) => {
   const number = id.replace('US-', '').replace(/^0+/, '');
@@ -27,8 +28,10 @@ const formatStoryId = (id) => {
 function App() {
   // Estados principales
   const [selectedView, setSelectedView] = useState('by-client')
+  const [showArchived, setShowArchived] = useState(false)
   const [selectedStory, setSelectedStory] = useState(null)
   const [filterStatus, setFilterStatus] = useState('all')
+  const [filterMember, setFilterMember] = useState('all')
   const [expandedClients, setExpandedClients] = useState({ 1: true, 2: true, 3: true, 4: true })
   const [selectedKPI, setSelectedKPI] = useState(null)
   const [showClientForm, setShowClientForm] = useState(false)
@@ -39,6 +42,7 @@ function App() {
   const [selectedParkingItem, setSelectedParkingItem] = useState(null)
   const [editingStory, setEditingStory] = useState(null)
   const [storyToDelete, setStoryToDelete] = useState(null)
+  const [formAssignedTo, setFormAssignedTo] = useState([])
   
   // Estados de datos
   const [clients, setClients] = useState([])
@@ -49,6 +53,10 @@ function App() {
   // Cargar datos al montar el componente
   useEffect(() => {
     loadData()
+  }, [])
+
+  useEffect(() => {
+    archiveOldCompletedStories()
   }, [])
 
   // Función para cargar datos desde Supabase
@@ -104,6 +112,7 @@ function App() {
       const { data: storiesData, error: storiesError } = await supabase
         .from('user_stories')
         .select('*')
+        .eq('archived', false)
         .order('id')
       
       if (storiesError) throw storiesError
@@ -121,6 +130,32 @@ function App() {
       setParkingItems(parkingData || [])
     } catch (err) {
       setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const loadArchivedStories = async () => {
+    try {
+      setLoading(true)
+      
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        const archived = userStories.filter(s => s.status === 'completed' && s.archived)
+        return archived
+      }
+      
+      const { data: archivedData, error } = await supabase
+        .from('user_stories')
+        .select('*')
+        .eq('archived', true)
+        .order('completed_date', { ascending: false })
+      
+      if (error) throw error
+      
+      return archivedData || []
+    } catch (err) {
+      setError(err.message)
+      return []
     } finally {
       setLoading(false)
     }
@@ -171,9 +206,25 @@ function App() {
   }
 
   // Variables computadas
-  const filteredStories = userStories.filter(story => 
-    filterStatus === 'all' || story.status === filterStatus
-  )
+  const filteredStories = userStories.filter(story => {
+    if (selectedView === 'by-client' && story.status === 'completed' && !showArchived) {
+      return false;
+    }
+    
+    // Filtro por status
+    if (filterStatus !== 'all' && story.status !== filterStatus) {
+      return false;
+    }
+    
+    // Filtro por miembro del equipo
+    if (filterMember !== 'all') {
+      if (!story.assigned_to || !story.assigned_to.includes(filterMember)) {
+        return false;
+      }
+    }
+    
+    return true;
+  })
 
   const storiesByClient = selectedView === 'by-client' 
     ? clients.map(client => ({
@@ -260,12 +311,14 @@ function App() {
           assignee: formData.get('assignee') || null,
           details: formData.get('details') || null,
           story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+          assigned_to: formAssignedTo,
           dependencies: [],
           next_steps: []
         }
         
         setUserStories(prev => [...prev, newStory])
         setShowStoryForm(false)
+        setFormAssignedTo([])
         
         // Si se creó desde un parking item, actualizar su estado
         if (selectedParkingItem) {
@@ -295,7 +348,8 @@ function App() {
           end_date: formData.get('end_date') || null,
           assignee: formData.get('assignee') || null,
           details: formData.get('details') || null,
-          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null
+          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+          assigned_to: formAssignedTo
         })
       
       if (error) throw error
@@ -303,6 +357,7 @@ function App() {
       // Recargar datos desde Supabase
       await loadData()
       setShowStoryForm(false)
+      setFormAssignedTo([])
       
       // Si se creó desde un parking item, actualizar su estado
       if (selectedParkingItem) {
@@ -319,15 +374,24 @@ function App() {
       if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         // Si no hay configuración, usar estado local
         setUserStories(prev => prev.map(story => 
-          story.id === storyId ? { ...story, status: newStatus } : story
+          story.id === storyId ? { 
+            ...story, 
+            status: newStatus,
+            completed_date: newStatus === 'completed' ? new Date().toISOString() : story.completed_date
+          } : story
         ))
         return
+      }
+      
+      const updateData = { status: newStatus }
+      if (newStatus === 'completed') {
+        updateData.completed_date = new Date().toISOString()
       }
       
       // Actualizar estado en Supabase
       const { error } = await supabase
         .from('user_stories')
-        .update({ status: newStatus })
+        .update(updateData)
         .eq('id', storyId)
       
       if (error) throw error
@@ -337,6 +401,33 @@ function App() {
     } catch (err) {
       console.error('Error al actualizar story:', err)
       setError(err.message)
+    }
+  }
+
+  const archiveOldCompletedStories = async () => {
+    try {
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        return
+      }
+      
+      const fifteenDaysAgo = new Date()
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15)
+      
+      const { error } = await supabase
+        .from('user_stories')
+        .update({ archived: true })
+        .eq('status', 'completed')
+        .lt('completed_date', fifteenDaysAgo.toISOString())
+        .eq('archived', false)
+      
+      if (error) {
+        console.error('Error archivando stories:', error)
+        return
+      }
+      
+      await loadData()
+    } catch (err) {
+      console.error('Error en archiveOldCompletedStories:', err)
     }
   }
 
@@ -491,7 +582,8 @@ function App() {
                 end_date: formData.get('end_date') || null,
                 assignee: formData.get('assignee') || null,
                 details: formData.get('details') || null,
-                story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null
+                story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+                assigned_to: editingStory.assigned_to || []
               }
             : story
         ))
@@ -513,7 +605,8 @@ function App() {
           end_date: formData.get('end_date') || null,
           assignee: formData.get('assignee') || null,
           details: formData.get('details') || null,
-          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null
+          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+          assigned_to: editingStory.assigned_to || []
         })
         .eq('id', editingStory.id)
       
@@ -639,6 +732,23 @@ function App() {
             <span>Dependencias: {story.dependencies.join(', ')}</span>
           </div>
         )}
+        
+        {/* Tags de equipo - NUEVO */}
+        {story.assigned_to && story.assigned_to.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+            {story.assigned_to.map(tagName => {
+              const member = TEAM_MEMBERS.find(m => m.name === tagName);
+              return member ? (
+                <TeamTag
+                  key={tagName}
+                  name={member.name}
+                  color={member.color}
+                  size="sm"
+                />
+              ) : null;
+            })}
+          </div>
+        )}
       </div>
     )
   }
@@ -730,10 +840,10 @@ function App() {
             onClick={() => setSelectedKPI('all')}
           >
             <div className="flex items-center justify-between">
-              <div>
+      <div>
                 <p className="text-sm font-medium text-gray-600">Total Stories</p>
                 <p className="text-2xl font-bold text-gray-900">{totalStories}</p>
-              </div>
+      </div>
               <Users className="w-8 h-8 text-primary" />
             </div>
           </div>
@@ -792,6 +902,20 @@ function App() {
               >
                 Por Cliente
               </button>
+              
+              {selectedView === 'by-client' && (
+                <button
+                  onClick={() => setShowArchived(!showArchived)}
+                  className={`px-4 py-2 rounded-lg transition-colors text-sm ${
+                    showArchived
+                      ? 'bg-green-100 text-green-700 border border-green-300'
+                      : 'bg-white text-gray-600 hover:bg-gray-50 border border-gray-200'
+                  }`}
+                >
+                  {showArchived ? '✓ Mostrando Completadas' : 'Ver Completadas'}
+                </button>
+              )}
+              
               <button
                 onClick={() => setSelectedView('by-date')}
                 className={`px-4 py-2 rounded-lg transition-colors ${
@@ -835,13 +959,57 @@ function App() {
                 <option value="pending">Pendiente</option>
                 <option value="blocked">Bloqueado</option>
               </select>
+              
+              <select
+                value={filterMember}
+                onChange={(e) => setFilterMember(e.target.value)}
+                className="px-3 py-2 border border-gray-200 rounded-lg bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+              >
+                <option value="all">Todos los miembros</option>
+                {TEAM_MEMBERS.map(member => (
+                  <option key={member.name} value={member.name}>
+                    {member.name}
+                  </option>
+                ))}
+              </select>
             </div>
+            
+            {(filterStatus !== 'all' || filterMember !== 'all') && (
+              <div className="flex items-center gap-2 px-3 py-2 bg-purple-50 text-primary rounded-lg text-sm">
+                <span className="font-semibold">{filteredStories.length}</span>
+                <span>stories filtradas</span>
+                <button
+                  onClick={() => {
+                    setFilterStatus('all');
+                    setFilterMember('all');
+                  }}
+                  className="ml-2 text-xs underline hover:no-underline"
+                >
+                  Limpiar filtros
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Vista por Cliente */}
         {selectedView === 'by-client' && (
           <div className="space-y-4">
+            {selectedView === 'by-client' && showArchived && (
+              <div className="bg-green-50 border-2 border-green-200 rounded-xl p-6 mb-4">
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="bg-green-500 text-white rounded-full p-2">
+                    <CheckCircle size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-bold text-green-900">Tareas Completadas</h2>
+                    <p className="text-sm text-green-700">
+                      Mostrando todas las user stories completadas • Las tareas se archivan automáticamente después de 15 días en "Done"
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
             {storiesByClient.map(client => (
               <div key={client.id} className="bg-white rounded-2xl border border-gray-100 overflow-hidden hover:shadow-lg transition-all duration-200">
                 <div 
@@ -891,7 +1059,7 @@ function App() {
         {/* Vista Kanban */}
         {selectedView === 'kanban' && (
           <KanbanBoard 
-            userStories={userStories} 
+            userStories={filteredStories} 
             clients={clients} 
             onUpdateStory={handleUpdateStoryStatus} 
             onStoryClick={setSelectedStory} 
@@ -1149,18 +1317,12 @@ function App() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Asignado a
-                    </label>
-                    <input
-                      type="text"
-                      name="assignee"
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
-                    />
-                  </div>
                 </div>
+                
+                <TeamTagsSelector
+                  selectedTags={formAssignedTo}
+                  onChange={setFormAssignedTo}
+                />
                 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1355,19 +1517,12 @@ function App() {
                       className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
                     />
                   </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Asignado a
-                    </label>
-                    <input
-                      type="text"
-                      name="assignee"
-                      defaultValue={editingStory.assignee || ''}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all duration-200"
-                    />
-                  </div>
                 </div>
+                
+                <TeamTagsSelector
+                  selectedTags={editingStory.assigned_to || []}
+                  onChange={(tags) => setEditingStory({...editingStory, assigned_to: tags})}
+                />
                 
                 <div className="flex gap-3 pt-4">
                   <button
@@ -1431,7 +1586,7 @@ function App() {
                   >
                     Eliminar
                   </button>
-                </div>
+      </div>
               </div>
             </div>
           </div>

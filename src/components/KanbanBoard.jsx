@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calendar, User } from 'lucide-react';
+import { TeamTag, TEAM_MEMBERS } from './TeamTagsSelector';
 
 const formatStoryId = (id) => {
   const number = id.replace('US-', '').replace(/^0+/, '');
@@ -19,7 +20,22 @@ export default function KanbanBoard({ userStories, clients, onUpdateStory, onSto
   ];
 
   const filteredStories = selectedClient === 'all' ? userStories : userStories.filter(s => s.client_id === parseInt(selectedClient));
-  const getStoriesByColumn = (columnId) => filteredStories.filter(story => story.status === columnId);
+  const getStoriesByColumn = (columnId) => {
+    const stories = filteredStories.filter(story => story.status === columnId);
+    
+    if (columnId === 'completed') {
+      const fifteenDaysAgo = new Date();
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      
+      return stories.filter(story => {
+        if (!story.completed_date) return true;
+        const completedDate = new Date(story.completed_date);
+        return completedDate >= fifteenDaysAgo;
+      });
+    }
+    
+    return stories;
+  };
 
   const handleDragStart = (e, storyId) => {
     setActiveId(storyId);
@@ -77,6 +93,23 @@ export default function KanbanBoard({ userStories, clients, onUpdateStory, onSto
             </span>
           )}
         </div>
+        
+        {/* Tags de equipo - NUEVO */}
+        {story.assigned_to && story.assigned_to.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-gray-100">
+            {story.assigned_to.map(tagName => {
+              const member = TEAM_MEMBERS.find(m => m.name === tagName);
+              return member ? (
+                <TeamTag
+                  key={tagName}
+                  name={member.name}
+                  color={member.color}
+                  size="sm"
+                />
+              ) : null;
+            })}
+          </div>
+        )}
       </div>
     );
   };
@@ -115,6 +148,13 @@ export default function KanbanBoard({ userStories, clients, onUpdateStory, onSto
                 </div>
               </div>
               <div className="space-y-3">
+                {column.id === 'completed' && stories.length > 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
+                    <p className="text-xs text-green-700 text-center">
+                      📦 Tareas se archivan después de 15 días
+                    </p>
+                  </div>
+                )}
                 {stories.map(story => (
                   <StoryCard key={story.id} story={story} />
                 ))}
