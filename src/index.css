@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background: #ffffff;
+  color: #1a1a1a;
+}
+
+@layer utilities {
+  .text-primary {
+    color: #8e64e1;
+  }
+  .bg-primary {
+    background-color: #8e64e1;
+  }
+  .border-primary {
+    border-color: #8e64e1;
+  }
+  .hover-primary:hover {
+    background-color: #7952c7;
+  }
+}
