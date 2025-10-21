@@ -178,3 +178,4 @@ export default function ParkingLot({ parkingItems, clients, onPromoteToStory, on
     </div>
   );
 }
+

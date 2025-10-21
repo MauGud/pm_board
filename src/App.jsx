@@ -19,6 +19,9 @@ import KanbanBoard from './components/KanbanBoard'
 import UserStoryGuide from './components/UserStoryGuide'
 import ParkingLot from './components/ParkingLot'
 import { TeamTagsSelector, TeamTag, TEAM_MEMBERS } from './components/TeamTagsSelector'
+import SubTasks from './components/SubTasks'
+import ImageAttachments from './components/ImageAttachments'
+import ImagePasteTextarea from './components/ImagePasteTextarea'
 
 const formatStoryId = (id) => {
   const number = id.replace('US-', '').replace(/^0+/, '');
@@ -41,8 +44,18 @@ function App() {
   const [showParkingForm, setShowParkingForm] = useState(false)
   const [selectedParkingItem, setSelectedParkingItem] = useState(null)
   const [editingStory, setEditingStory] = useState(null)
+  const [editingDescriptionImages, setEditingDescriptionImages] = useState([])
+  const [editingDetailsImages, setEditingDetailsImages] = useState([])
+  const [editingDescription, setEditingDescription] = useState('')
+  const [editingDetails, setEditingDetails] = useState('')
   const [storyToDelete, setStoryToDelete] = useState(null)
   const [formAssignedTo, setFormAssignedTo] = useState([])
+  const [formSubTasks, setFormSubTasks] = useState([])
+  const [formImages, setFormImages] = useState([])
+  const [formDescriptionImages, setFormDescriptionImages] = useState([])
+  const [formDetailsImages, setFormDetailsImages] = useState([])
+  const [formDescription, setFormDescription] = useState('')
+  const [formDetails, setFormDetails] = useState('')
   
   // Estados de datos
   const [clients, setClients] = useState([])
@@ -58,6 +71,16 @@ function App() {
   useEffect(() => {
     archiveOldCompletedStories()
   }, [])
+
+  // Inicializar estados cuando se abre formulario de edición
+  useEffect(() => {
+    if (editingStory) {
+      setEditingDescription(editingStory.description || '')
+      setEditingDetails(editingStory.details || '')
+      setEditingDescriptionImages(editingStory.description_images || [])
+      setEditingDetailsImages(editingStory.details_images || [])
+    }
+  }, [editingStory])
 
   // Función para cargar datos desde Supabase
   const loadData = async () => {
@@ -76,14 +99,27 @@ function App() {
         ]
         
         const storiesData = [
-          { id: 'US-001', client_id: 1, title: 'Login con autenticación de dos factores', description: 'Como usuario del sistema, quiero poder iniciar sesión con autenticación de dos factores para aumentar la seguridad de mi cuenta.', status: 'completed', priority: 'high', estimated_hours: 16, start_date: '2025-10-01', end_date: '2025-10-05', completed_date: '2025-10-05', assignee: 'María González', details: 'Implementar usando Google Authenticator. Debe funcionar en mobile y web.', dependencies: [], next_steps: ['US-002', 'US-003'] },
-          { id: 'US-002', client_id: 1, title: 'Recuperación de contraseña', description: 'Como usuario, quiero poder recuperar mi contraseña mediante email para poder acceder si la olvido.', status: 'in-progress', priority: 'high', estimated_hours: 8, start_date: '2025-10-06', end_date: '2025-10-12', completed_date: null, assignee: 'Carlos Ruiz', details: 'Token válido por 24 horas. Incluir validación de seguridad.', dependencies: ['US-001'], next_steps: [] },
-          { id: 'US-003', client_id: 1, title: 'Dashboard de métricas del usuario', description: 'Como administrador, quiero ver un dashboard con métricas clave de uso del sistema.', status: 'pending', priority: 'medium', estimated_hours: 24, start_date: '2025-10-13', end_date: '2025-10-20', completed_date: null, assignee: 'Ana López', details: 'Gráficos interactivos con filtros por fecha. Exportación a PDF.', dependencies: ['US-001'], next_steps: [] },
-          { id: 'US-005', client_id: 2, title: 'Catálogo de productos con búsqueda', description: 'Como cliente, quiero buscar productos por nombre, categoría y precio.', status: 'in-progress', priority: 'urgent', estimated_hours: 20, start_date: '2025-10-08', end_date: '2025-10-15', completed_date: null, assignee: 'Pedro Martínez', details: 'Búsqueda con autocompletado. Filtros múltiples. Paginación de resultados.', dependencies: [], next_steps: ['US-006'] },
-          { id: 'US-006', client_id: 2, title: 'Carrito de compras', description: 'Como cliente, quiero agregar productos al carrito y modificar cantidades.', status: 'pending', priority: 'urgent', estimated_hours: 16, start_date: '2025-10-16', end_date: '2025-10-22', completed_date: null, assignee: 'Laura Sánchez', details: 'Persistir carrito en memoria. Calcular totales automáticamente.', dependencies: ['US-005'], next_steps: [] },
-          { id: 'US-010', client_id: 3, title: 'Portal de autoservicio', description: 'Como cliente del banco, quiero acceder a mis cuentas y realizar transacciones.', status: 'in-progress', priority: 'high', estimated_hours: 40, start_date: '2025-10-01', end_date: '2025-10-18', completed_date: null, assignee: 'Ana López', details: 'Consulta de saldos, transferencias, pago de servicios.', dependencies: [], next_steps: [] },
-          { id: 'US-012', client_id: 4, title: 'Gestión de pacientes', description: 'Como médico, quiero registrar y consultar información de pacientes.', status: 'completed', priority: 'urgent', estimated_hours: 28, start_date: '2025-09-20', end_date: '2025-10-02', completed_date: '2025-10-02', assignee: 'Pedro Martínez', details: 'Cumplir con HIPAA. Historial clínico completo.', dependencies: [], next_steps: ['US-013'] },
-          { id: 'US-013', client_id: 4, title: 'Agendamiento de citas', description: 'Como paciente, quiero agendar citas médicas en línea.', status: 'in-progress', priority: 'urgent', estimated_hours: 22, start_date: '2025-10-05', end_date: '2025-10-16', completed_date: null, assignee: 'Laura Sánchez', details: 'Calendario interactivo. Confirmación automática.', dependencies: ['US-012'], next_steps: [] }
+          { id: 'US-001', client_id: 1, title: 'Login con autenticación de dos factores', description: 'Como usuario del sistema, quiero poder iniciar sesión con autenticación de dos factores para aumentar la seguridad de mi cuenta.', status: 'completed', priority: 'high', estimated_hours: 16, start_date: '2025-10-01', end_date: '2025-10-05', completed_date: '2025-10-05', assignee: 'María González', details: 'Implementar usando Google Authenticator. Debe funcionar en mobile y web.', dependencies: [], next_steps: ['US-002', 'US-003'], sub_tasks: [
+            { id: 'subtask_1', title: 'Configurar Google Authenticator SDK', completed: true, order: 0 },
+            { id: 'subtask_2', title: 'Crear interfaz de configuración 2FA', completed: true, order: 1 },
+            { id: 'subtask_3', title: 'Implementar validación de códigos', completed: true, order: 2 },
+            { id: 'subtask_4', title: 'Agregar opción de backup codes', completed: false, order: 3 }
+          ], images: [] },
+          { id: 'US-002', client_id: 1, title: 'Recuperación de contraseña', description: 'Como usuario, quiero poder recuperar mi contraseña mediante email para poder acceder si la olvido.', status: 'in-progress', priority: 'high', estimated_hours: 8, start_date: '2025-10-06', end_date: '2025-10-12', completed_date: null, assignee: 'Carlos Ruiz', details: 'Token válido por 24 horas. Incluir validación de seguridad.', dependencies: ['US-001'], next_steps: [], sub_tasks: [
+            { id: 'subtask_5', title: 'Crear endpoint de recuperación', completed: true, order: 0 },
+            { id: 'subtask_6', title: 'Diseñar email template', completed: false, order: 1 },
+            { id: 'subtask_7', title: 'Implementar validación de token', completed: false, order: 2 }
+          ], images: [] },
+          { id: 'US-003', client_id: 1, title: 'Dashboard de métricas del usuario', description: 'Como administrador, quiero ver un dashboard con métricas clave de uso del sistema.', status: 'pending', priority: 'medium', estimated_hours: 24, start_date: '2025-10-13', end_date: '2025-10-20', completed_date: null, assignee: 'Ana López', details: 'Gráficos interactivos con filtros por fecha. Exportación a PDF.', dependencies: ['US-001'], next_steps: [], sub_tasks: [], images: [] },
+          { id: 'US-005', client_id: 2, title: 'Catálogo de productos con búsqueda', description: 'Como cliente, quiero buscar productos por nombre, categoría y precio.', status: 'in-progress', priority: 'urgent', estimated_hours: 20, start_date: '2025-10-08', end_date: '2025-10-15', completed_date: null, assignee: 'Pedro Martínez', details: 'Búsqueda con autocompletado. Filtros múltiples. Paginación de resultados.', dependencies: [], next_steps: ['US-006'], sub_tasks: [
+            { id: 'subtask_8', title: 'Crear índice de búsqueda', completed: true, order: 0 },
+            { id: 'subtask_9', title: 'Implementar autocompletado', completed: false, order: 1 },
+            { id: 'subtask_10', title: 'Agregar filtros avanzados', completed: false, order: 2 }
+          ], images: [] },
+          { id: 'US-006', client_id: 2, title: 'Carrito de compras', description: 'Como cliente, quiero agregar productos al carrito y modificar cantidades.', status: 'pending', priority: 'urgent', estimated_hours: 16, start_date: '2025-10-16', end_date: '2025-10-22', completed_date: null, assignee: 'Laura Sánchez', details: 'Persistir carrito en memoria. Calcular totales automáticamente.', dependencies: ['US-005'], next_steps: [], sub_tasks: [], images: [] },
+          { id: 'US-010', client_id: 3, title: 'Portal de autoservicio', description: 'Como cliente del banco, quiero acceder a mis cuentas y realizar transacciones.', status: 'in-progress', priority: 'high', estimated_hours: 40, start_date: '2025-10-01', end_date: '2025-10-18', completed_date: null, assignee: 'Ana López', details: 'Consulta de saldos, transferencias, pago de servicios.', dependencies: [], next_steps: [], sub_tasks: [], images: [] },
+          { id: 'US-012', client_id: 4, title: 'Gestión de pacientes', description: 'Como médico, quiero registrar y consultar información de pacientes.', status: 'completed', priority: 'urgent', estimated_hours: 28, start_date: '2025-09-20', end_date: '2025-10-02', completed_date: '2025-10-02', assignee: 'Pedro Martínez', details: 'Cumplir con HIPAA. Historial clínico completo.', dependencies: [], next_steps: ['US-013'], sub_tasks: [], images: [] },
+          { id: 'US-013', client_id: 4, title: 'Agendamiento de citas', description: 'Como paciente, quiero agendar citas médicas en línea.', status: 'in-progress', priority: 'urgent', estimated_hours: 22, start_date: '2025-10-05', end_date: '2025-10-16', completed_date: null, assignee: 'Laura Sánchez', details: 'Calendario interactivo. Confirmación automática.', dependencies: ['US-012'], next_steps: [], sub_tasks: [], images: [] }
         ]
         
         const parkingData = [
@@ -313,12 +349,20 @@ function App() {
           story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
           assigned_to: formAssignedTo,
           dependencies: [],
-          next_steps: []
+          next_steps: [],
+          sub_tasks: formSubTasks,
+          images: formImages
         }
         
         setUserStories(prev => [...prev, newStory])
         setShowStoryForm(false)
         setFormAssignedTo([])
+        setFormSubTasks([])
+        setFormImages([])
+        setFormDescriptionImages([])
+        setFormDetailsImages([])
+        setFormDescription('')
+        setFormDetails('')
         
         // Si se creó desde un parking item, actualizar su estado
         if (selectedParkingItem) {
@@ -349,7 +393,9 @@ function App() {
           assignee: formData.get('assignee') || null,
           details: formData.get('details') || null,
           story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-          assigned_to: formAssignedTo
+          assigned_to: formAssignedTo,
+          sub_tasks: formSubTasks,
+          images: formImages
         })
       
       if (error) throw error
@@ -358,6 +404,8 @@ function App() {
       await loadData()
       setShowStoryForm(false)
       setFormAssignedTo([])
+      setFormSubTasks([])
+      setFormImages([])
       
       // Si se creó desde un parking item, actualizar su estado
       if (selectedParkingItem) {
@@ -583,7 +631,9 @@ function App() {
                 assignee: formData.get('assignee') || null,
                 details: formData.get('details') || null,
                 story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-                assigned_to: editingStory.assigned_to || []
+                assigned_to: editingStory.assigned_to || [],
+                sub_tasks: editingStory.sub_tasks || [],
+                images: editingStory.images || []
               }
             : story
         ))
@@ -606,7 +656,9 @@ function App() {
           assignee: formData.get('assignee') || null,
           details: formData.get('details') || null,
           story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-          assigned_to: editingStory.assigned_to || []
+          assigned_to: editingStory.assigned_to || [],
+          sub_tasks: editingStory.sub_tasks || [],
+          images: editingStory.images || []
         })
         .eq('id', editingStory.id)
       
@@ -656,12 +708,10 @@ function App() {
         className="border border-gray-100 rounded-xl p-4 hover:border-primary hover:shadow-lg transition-all duration-200 cursor-pointer bg-white"
         onClick={() => setSelectedStory(story)}
       >
-        <div className="flex justify-between items-start mb-2">
+        {/* Header con ID y controles */}
+        <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
             <span className="font-mono text-sm text-gray-600">{formatStoryId(story.id)}</span>
-            {showClient && client && (
-              <span className="text-sm text-gray-500">• {client.name}</span>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <div className="flex gap-2">
@@ -696,14 +746,54 @@ function App() {
             </div>
           </div>
         </div>
-        
-        <h3 className="font-semibold text-gray-900 mb-2">{story.title}</h3>
-        {story.story_points && (
-          <span className="bg-purple-50 text-primary border border-primary text-xs font-bold px-2 py-1 rounded ml-2">
-            {story.story_points} pts
-          </span>
+
+        {/* Cliente */}
+        {showClient && client && (
+          <div className="mb-2">
+            <span className="text-sm font-medium text-gray-700">Cliente:</span>
+            <span className="text-sm text-gray-600 ml-1">{client.name}</span>
+          </div>
         )}
-        <p className="text-gray-600 text-sm mb-3 line-clamp-2">{story.description}</p>
+        
+        {/* Título */}
+        <h3 className="font-semibold text-gray-900 mb-2">{story.title}</h3>
+        
+        {/* Descripción */}
+        <div className="mb-3">
+          <p className="text-gray-600 text-sm line-clamp-2">{story.description}</p>
+        </div>
+        
+        {/* Detalles adicionales */}
+        {story.details && (
+          <div className="mb-3">
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Detalles adicionales:</span>
+            <p className="text-gray-600 text-sm mt-1 line-clamp-2">{story.details}</p>
+          </div>
+        )}
+        
+        {/* Carga de documentos */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">Documentos:</span>
+            <div className="flex items-center gap-2">
+              {story.story_points && (
+                <span className="bg-purple-50 text-primary border border-primary text-xs font-bold px-2 py-1 rounded">
+                  {story.story_points} pts
+                </span>
+              )}
+              {story.sub_tasks && story.sub_tasks.length > 0 && (
+                <span className="bg-blue-50 text-blue-700 border border-blue-200 text-xs font-medium px-2 py-1 rounded">
+                  📋 {story.sub_tasks.filter(st => st.completed).length}/{story.sub_tasks.length}
+                </span>
+              )}
+              {story.images && story.images.length > 0 && (
+                <span className="bg-green-50 text-green-700 border border-green-200 text-xs font-medium px-2 py-1 rounded">
+                  🖼️ {story.images.length}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
         
         <div className="flex justify-between items-center text-sm text-gray-500">
           <div className="flex items-center gap-4">
@@ -901,7 +991,7 @@ function App() {
                 }`}
               >
                 Por Cliente
-              </button>
+        </button>
               
               {selectedView === 'by-client' && (
                 <button
@@ -1005,8 +1095,8 @@ function App() {
                     <h2 className="text-xl font-bold text-green-900">Tareas Completadas</h2>
                     <p className="text-sm text-green-700">
                       Mostrando todas las user stories completadas • Las tareas se archivan automáticamente después de 15 días en "Done"
-                    </p>
-                  </div>
+        </p>
+      </div>
                 </div>
               </div>
             )}
@@ -1205,12 +1295,16 @@ function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Descripción
                   </label>
-                  <textarea
+                  <ImagePasteTextarea
                     name="description"
                     required
                     rows={3}
-                    defaultValue={selectedParkingItem?.description || ''}
+                    value={formDescription}
+                    onChange={(e) => setFormDescription(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Como [usuario], quiero [funcionalidad] para [beneficio]..."
+                    images={formDescriptionImages}
+                    onImagesChange={setFormDescriptionImages}
                   />
                 </div>
                 
@@ -1218,11 +1312,15 @@ function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Detalles Adicionales
                   </label>
-                  <textarea
+                  <ImagePasteTextarea
                     name="details"
                     rows={2}
-                    defaultValue={selectedParkingItem?.notes || ''}
+                    value={formDetails}
+                    onChange={(e) => setFormDetails(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Criterios de aceptación, consideraciones técnicas, dependencias..."
+                    images={formDetailsImages}
+                    onImagesChange={setFormDetailsImages}
                   />
                 </div>
                 
@@ -1324,6 +1422,16 @@ function App() {
                   onChange={setFormAssignedTo}
                 />
                 
+                <SubTasks
+                  subTasks={formSubTasks}
+                  onUpdateSubTasks={setFormSubTasks}
+                />
+                
+                <ImageAttachments
+                  images={formImages}
+                  onUpdateImages={setFormImages}
+                />
+                
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
@@ -1400,12 +1508,16 @@ function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Descripción
                   </label>
-                  <textarea
+                  <ImagePasteTextarea
                     name="description"
                     required
                     rows={3}
-                    defaultValue={editingStory.description}
+                    value={editingDescription}
+                    onChange={(e) => setEditingDescription(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Como [usuario], quiero [funcionalidad] para [beneficio]..."
+                    images={editingDescriptionImages}
+                    onImagesChange={setEditingDescriptionImages}
                   />
                 </div>
                 
@@ -1413,11 +1525,15 @@ function App() {
                   <label className="block text-sm font-medium text-gray-700 mb-2">
                     Detalles Adicionales
                   </label>
-                  <textarea
+                  <ImagePasteTextarea
                     name="details"
                     rows={2}
-                    defaultValue={editingStory.details || ''}
+                    value={editingDetails}
+                    onChange={(e) => setEditingDetails(e.target.value)}
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    placeholder="Criterios de aceptación, consideraciones técnicas, dependencias..."
+                    images={editingDetailsImages}
+                    onImagesChange={setEditingDetailsImages}
                   />
                 </div>
                 
@@ -1522,6 +1638,16 @@ function App() {
                 <TeamTagsSelector
                   selectedTags={editingStory.assigned_to || []}
                   onChange={(tags) => setEditingStory({...editingStory, assigned_to: tags})}
+                />
+                
+                <SubTasks
+                  subTasks={editingStory.sub_tasks || []}
+                  onUpdateSubTasks={(subTasks) => setEditingStory({...editingStory, sub_tasks: subTasks})}
+                />
+                
+                <ImageAttachments
+                  images={editingStory.images || []}
+                  onUpdateImages={(images) => setEditingStory({...editingStory, images: images})}
                 />
                 
                 <div className="flex gap-3 pt-4">
@@ -1657,6 +1783,42 @@ function App() {
                   <div>
                     <h3 className="font-semibold text-gray-900 mb-2">Detalles</h3>
                     <p className="text-gray-600">{selectedStory.details}</p>
+                  </div>
+                )}
+                
+                {selectedStory.sub_tasks && selectedStory.sub_tasks.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-2">Sub-tareas</h3>
+                    <SubTasks
+                      subTasks={selectedStory.sub_tasks}
+                      onUpdateSubTasks={(subTasks) => {
+                        // Update the story in the state
+                        setUserStories(prev => prev.map(story => 
+                          story.id === selectedStory.id 
+                            ? { ...story, sub_tasks: subTasks }
+                            : story
+                        ))
+                        setSelectedStory({...selectedStory, sub_tasks: subTasks})
+                      }}
+                    />
+                  </div>
+                )}
+                
+                {selectedStory.images && selectedStory.images.length > 0 && (
+                  <div>
+                    <h3 className="font-semibold text-gray-900 mb-2">Imágenes</h3>
+                    <ImageAttachments
+                      images={selectedStory.images}
+                      onUpdateImages={(images) => {
+                        // Update the story in the state
+                        setUserStories(prev => prev.map(story => 
+                          story.id === selectedStory.id 
+                            ? { ...story, images: images }
+                            : story
+                        ))
+                        setSelectedStory({...selectedStory, images: images})
+                      }}
+                    />
                   </div>
                 )}
                 
