@@ -182,3 +182,4 @@ CHECK (jsonb_typeof(images) = 'array');
 -- 5. Maximum 10 images per user story (enforced in frontend)
 -- 6. Drag-and-drop reordering updates the 'order' field
 -- 7. All operations work with both Supabase and local fallback
+
