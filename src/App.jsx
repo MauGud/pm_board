@@ -147,7 +147,16 @@ function App() {
       // Cargar user stories desde Supabase
       const { data: storiesData, error: storiesError } = await supabase
         .from('user_stories')
-        .select('*')
+        .select(`
+          *,
+          subtasks (
+            id,
+            title,
+            description,
+            completed,
+            created_at
+          )
+        `)
         .eq('archived', false)
         .order('id')
       
@@ -378,27 +387,54 @@ function App() {
       const newId = `US-${String(maxId + 1).padStart(3, '0')}`
       
       // Crear user story en Supabase
-      const { error } = await supabase
+      const basePayload = {
+        id: newId,
+        client_id: parseInt(formData.get('client_id')),
+        title: formData.get('title'),
+        description: formData.get('description'),
+        status: formData.get('status'),
+        priority: formData.get('priority'),
+        estimated_hours: parseInt(formData.get('estimated_hours')) || null,
+        start_date: formData.get('start_date') || null,
+        end_date: formData.get('end_date') || null,
+        assignee: formData.get('assignee') || null,
+        details: formData.get('details') || null,
+        story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+        assigned_to: formAssignedTo
+      }
+      // Solo agregar images si existen
+      if (Array.isArray(formImages) && formImages.length > 0) {
+        basePayload.images = formImages
+      }
+      const { data: insertedStories, error } = await supabase
         .from('user_stories')
-        .insert({
-          id: newId,
-          client_id: parseInt(formData.get('client_id')),
-          title: formData.get('title'),
-          description: formData.get('description'),
-          status: formData.get('status'),
-          priority: formData.get('priority'),
-          estimated_hours: parseInt(formData.get('estimated_hours')) || null,
-          start_date: formData.get('start_date') || null,
-          end_date: formData.get('end_date') || null,
-          assignee: formData.get('assignee') || null,
-          details: formData.get('details') || null,
-          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-          assigned_to: formAssignedTo,
-          sub_tasks: formSubTasks,
-          images: formImages
-        })
+        .insert(basePayload)
+        .select()
       
       if (error) throw error
+      
+      // Insertar subtasks por separado solo si existen válidos
+      if (insertedStories && insertedStories[0]) {
+        const storyId = insertedStories[0].id
+        const validCreateSubTasks = Array.isArray(formSubTasks)
+          ? formSubTasks
+              .filter(st => st && st.title && String(st.title).trim() !== '')
+              .map(st => ({
+                user_story_id: storyId,
+                title: String(st.title).trim(),
+                description: st.description || null,
+                completed: !!st.completed
+              }))
+          : []
+        if (validCreateSubTasks.length > 0) {
+          const { error: subtasksError } = await supabase
+            .from('subtasks')
+            .insert(validCreateSubTasks)
+          if (subtasksError) {
+            console.error('Error inserting subtasks:', subtasksError)
+          }
+        }
+      }
       
       // Recargar datos desde Supabase
       await loadData()
@@ -642,27 +678,52 @@ function App() {
       }
       
       // Actualizar user story en Supabase
-      const { error } = await supabase
+      const updatePayload = {
+        client_id: parseInt(formData.get('client_id')),
+        title: formData.get('title'),
+        description: formData.get('description'),
+        status: formData.get('status'),
+        priority: formData.get('priority'),
+        estimated_hours: parseInt(formData.get('estimated_hours')) || null,
+        start_date: formData.get('start_date') || null,
+        end_date: formData.get('end_date') || null,
+        assignee: formData.get('assignee') || null,
+        details: formData.get('details') || null,
+        story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
+        assigned_to: editingStory.assigned_to || []
+      }
+      // Solo agregar images si existen
+      if (Array.isArray(editingStory?.images) && editingStory.images.length > 0) {
+        updatePayload.images = editingStory.images
+      }
+      const { error: updateError } = await supabase
         .from('user_stories')
-        .update({
-          client_id: parseInt(formData.get('client_id')),
-          title: formData.get('title'),
-          description: formData.get('description'),
-          status: formData.get('status'),
-          priority: formData.get('priority'),
-          estimated_hours: parseInt(formData.get('estimated_hours')) || null,
-          start_date: formData.get('start_date') || null,
-          end_date: formData.get('end_date') || null,
-          assignee: formData.get('assignee') || null,
-          details: formData.get('details') || null,
-          story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-          assigned_to: editingStory.assigned_to || [],
-          sub_tasks: editingStory.sub_tasks || [],
-          images: editingStory.images || []
-        })
+        .update(updatePayload)
         .eq('id', editingStory.id)
       
-      if (error) throw error
+      if (updateError) throw updateError
+      
+      // Manejar subtasks por separado: borrar e insertar los nuevos válidos si existen
+      if (Array.isArray(editingStory?.sub_tasks)) {
+        const validUpdateSubTasks = editingStory.sub_tasks
+          .filter(st => st && st.title && String(st.title).trim() !== '')
+          .map(st => ({
+            user_story_id: editingStory.id,
+            title: String(st.title).trim(),
+            description: st.description || null,
+            completed: !!st.completed
+          }))
+        // Borrar existentes siempre, luego insertar solo si hay válidos
+        await supabase.from('subtasks').delete().eq('user_story_id', editingStory.id)
+        if (validUpdateSubTasks.length > 0) {
+          const { error: subtasksError } = await supabase
+            .from('subtasks')
+            .insert(validUpdateSubTasks)
+          if (subtasksError) {
+            console.error('Error updating subtasks:', subtasksError)
+          }
+        }
+      }
       
       // Recargar datos desde Supabase
       await loadData()
