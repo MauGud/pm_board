@@ -10,51 +10,67 @@ export default function ImagePasteTextarea({
 }) {
   
   const handlePaste = async (e) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    
-    for (let item of items) {
-      if (item.type.indexOf('image') !== -1) {
-        e.preventDefault();
-        
-        if (!onImagesChange) {
-          console.warn('No onImagesChange handler provided');
-          return;
-        }
-        
-        const file = item.getAsFile();
-        if (!file) return;
-        
-        // Validate size
-        if (file.size > 5 * 1024 * 1024) {
-          alert('Imagen muy grande (máximo 5MB)');
-          return;
-        }
-        
-        // Validate max images
-        if (images.length >= 10) {
-          alert('Máximo 10 imágenes permitidas');
-          return;
-        }
-        
-        // Convert to base64
-        const reader = new FileReader();
-        reader.onload = () => {
-          const newImage = {
-            id: Date.now().toString() + Math.random(),
-            dataUrl: reader.result,
-            name: file.name || 'imagen.png'
-          };
+    try {
+      const items = e.clipboardData?.items;
+      if (!items) return;
+      
+      for (let item of items) {
+        if (item.type.indexOf('image') !== -1) {
+          e.preventDefault();
           
-          onImagesChange([...images, newImage]);
-        };
-        reader.onerror = () => {
-          alert('Error al cargar la imagen');
-        };
-        reader.readAsDataURL(file);
-        
-        break;
+          if (!onImagesChange) {
+            console.warn('No onImagesChange handler provided');
+            return;
+          }
+          
+          try {
+            const file = item.getAsFile();
+            if (!file) return;
+            
+            // Validate size
+            if (file.size > 5 * 1024 * 1024) {
+              alert('Imagen muy grande (máximo 5MB)');
+              return;
+            }
+            
+            // Validate max images
+            if (images.length >= 10) {
+              alert('Máximo 10 imágenes permitidas');
+              return;
+            }
+            
+            // Convert to base64
+            const reader = new FileReader();
+            reader.onload = () => {
+              try {
+                const newImage = {
+                  id: Date.now().toString() + Math.random(),
+                  dataUrl: reader.result,
+                  name: file.name || 'imagen.png'
+                };
+                
+                onImagesChange([...images, newImage]);
+              } catch (error) {
+                console.error('Error processing image:', error);
+                alert('Error al procesar la imagen');
+              }
+            };
+            reader.onerror = () => {
+              alert('Error al cargar la imagen');
+            };
+            reader.readAsDataURL(file);
+          } catch (error) {
+            console.error('Error reading clipboard data:', error);
+            // Don't show alert for clipboard errors to avoid interrupting user
+            return;
+          }
+          
+          break;
+        }
       }
+    } catch (error) {
+      console.error('Error in handlePaste:', error);
+      // Silently fail to avoid breaking the form
     }
   };
   

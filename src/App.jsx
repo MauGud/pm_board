@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import { 
   AlertCircle, 
   CheckCircle, 
@@ -35,6 +35,7 @@ function App() {
   const [selectedStory, setSelectedStory] = useState(null)
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterMember, setFilterMember] = useState('all')
+  const [selectedClientFilter, setSelectedClientFilter] = useState('all')
   const [expandedClients, setExpandedClients] = useState({ 1: true, 2: true, 3: true, 4: true })
   const [selectedKPI, setSelectedKPI] = useState(null)
   const [showClientForm, setShowClientForm] = useState(false)
@@ -44,6 +45,21 @@ function App() {
   const [showParkingForm, setShowParkingForm] = useState(false)
   const [selectedParkingItem, setSelectedParkingItem] = useState(null)
   const [editingStory, setEditingStory] = useState(null)
+  const [editingSubTasks, setEditingSubTasks] = useState([])
+  
+  // Wrapper para setEditingSubTasks con logging
+  const updateEditingSubTasks = useCallback((subTasks) => {
+    console.log('[DIAGNOSTIC] updateEditingSubTasks called', {
+      subTasksCount: subTasks.length,
+      subTasks: subTasks.map(st => ({
+        id: st.id,
+        title: st.title,
+        titleType: typeof st.title,
+        hasTitle: !!(st.title && String(st.title).trim())
+      }))
+    })
+    setEditingSubTasks(subTasks)
+  }, [])
   const [editingDescriptionImages, setEditingDescriptionImages] = useState([])
   const [editingDetailsImages, setEditingDetailsImages] = useState([])
   const [editingDescription, setEditingDescription] = useState('')
@@ -79,6 +95,10 @@ function App() {
       setEditingDetails(editingStory.details || '')
       setEditingDescriptionImages(editingStory.description_images || [])
       setEditingDetailsImages(editingStory.details_images || [])
+      
+      // Initialize subtasks from either sub_tasks or subtasks (from DB)
+      const initialSubTasks = editingStory.subtasks || editingStory.sub_tasks || []
+      setEditingSubTasks(initialSubTasks)
     }
   }, [editingStory])
 
@@ -162,6 +182,14 @@ function App() {
       
       if (storiesError) throw storiesError
       
+      // Map subtasks to sub_tasks for consistency
+      // Supabase returns subtasks in 'subtasks' array, but app uses 'sub_tasks' in some places
+      const mappedStories = (storiesData || []).map(story => ({
+        ...story,
+        sub_tasks: story.subtasks || [],
+        subtasks: story.subtasks || []
+      }))
+      
       // Cargar parking lot desde Supabase
       const { data: parkingData, error: parkingError } = await supabase
         .from('parking_lot')
@@ -171,7 +199,7 @@ function App() {
       if (parkingError) throw parkingError
       
       setClients(clientsData || [])
-      setUserStories(storiesData || [])
+      setUserStories(mappedStories)
       setParkingItems(parkingData || [])
     } catch (err) {
       setError(err.message)
@@ -250,9 +278,25 @@ function App() {
     return clients.find(client => client.id === clientId)
   }
 
+  // Función para resetear el formulario de creación de story
+  const resetForm = () => {
+    setFormDescription('')
+    setFormDetails('')
+    setFormAssignedTo([])
+    setFormSubTasks([])
+    setFormImages([])
+    setFormDescriptionImages([])
+    setFormDetailsImages([])
+  }
+
   // Variables computadas
   const filteredStories = userStories.filter(story => {
     if (selectedView === 'by-client' && story.status === 'completed' && !showArchived) {
+      return false;
+    }
+    
+    // Filtro por cliente
+    if (selectedClientFilter !== 'all' && story.client_id !== parseInt(selectedClientFilter)) {
       return false;
     }
     
@@ -271,8 +315,13 @@ function App() {
     return true;
   })
 
+  // Filtrar clientes según el filtro seleccionado
+  const filteredClients = selectedClientFilter === 'all' 
+    ? clients 
+    : clients.filter(c => c.id === parseInt(selectedClientFilter))
+
   const storiesByClient = selectedView === 'by-client' 
-    ? clients.map(client => ({
+    ? filteredClients.map(client => ({
         ...client,
         stories: filteredStories.filter(story => story.client_id === client.id)
       }))
@@ -335,6 +384,9 @@ function App() {
 
   const handleCreateStory = async (formData) => {
     try {
+      // Clear any previous errors
+      setError(null)
+      
       // Verificar si tenemos configuración de Supabase
       if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         // Si no hay configuración, usar estado local
@@ -364,14 +416,8 @@ function App() {
         }
         
         setUserStories(prev => [...prev, newStory])
+        resetForm()
         setShowStoryForm(false)
-        setFormAssignedTo([])
-        setFormSubTasks([])
-        setFormImages([])
-        setFormDescriptionImages([])
-        setFormDetailsImages([])
-        setFormDescription('')
-        setFormDetails('')
         
         // Si se creó desde un parking item, actualizar su estado
         if (selectedParkingItem) {
@@ -426,29 +472,35 @@ function App() {
                 completed: !!st.completed
               }))
           : []
+        
         if (validCreateSubTasks.length > 0) {
           const { error: subtasksError } = await supabase
             .from('subtasks')
             .insert(validCreateSubTasks)
+          
           if (subtasksError) {
             console.error('Error inserting subtasks:', subtasksError)
+            throw subtasksError
           }
         }
       }
       
       // Recargar datos desde Supabase
       await loadData()
+      
+      // Only close the modal after ALL operations complete successfully
+      resetForm()
       setShowStoryForm(false)
-      setFormAssignedTo([])
-      setFormSubTasks([])
-      setFormImages([])
       
       // Si se creó desde un parking item, actualizar su estado
       if (selectedParkingItem) {
         await handleStoryCreatedFromParking(newId);
       }
     } catch (err) {
+      console.error('Error creating user story:', err)
       setError(err.message)
+      // DON'T close modal on error - let user try again
+      // resetForm() and setShowStoryForm(false) are NOT called here
     }
   }
 
@@ -563,6 +615,7 @@ function App() {
   };
 
   const handlePromoteToStory = (parkingItem) => {
+    resetForm();
     setSelectedParkingItem(parkingItem);
     setShowStoryForm(true);
   };
@@ -648,12 +701,45 @@ function App() {
   };
 
   const handleEditStory = async (formData) => {
+    // CRITICAL: Capture all values from editingStory at the start to prevent stale closures
+    if (!editingStory) {
+      console.error('No editingStory found')
+      return
+    }
+    
+    console.log('[DIAGNOSTIC] handleEditStory called', {
+      storyId: editingStory.id,
+      editingSubTasksCount: editingSubTasks?.length || 0,
+      editingSubTasks: editingSubTasks,
+      editingStorySubTasksCount: editingStory?.sub_tasks?.length || 0,
+      editingStorySubtasks: editingStory?.subtasks?.length || 0,
+      editingStorySubtasks: editingStory?.subtasks
+    })
+    
+    const storyId = editingStory.id
+    const currentSubTasks = editingSubTasks || []
+    const currentAssignedTo = editingStory?.assigned_to || []
+    const currentImages = editingStory?.images || []
+    
+    console.log('[DIAGNOSTIC] Captured values', {
+      storyId,
+      currentSubTasksCount: currentSubTasks.length,
+      currentSubTasks: currentSubTasks.map(st => ({
+        id: st.id,
+        title: st.title,
+        hasTitle: !!(st.title && String(st.title).trim())
+      }))
+    })
+    
     try {
+      // Clear any previous errors
+      setError(null)
+      
       // Verificar si tenemos configuración de Supabase
       if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
         // Si no hay configuración, usar estado local
         setUserStories(prev => prev.map(story => 
-          story.id === editingStory.id 
+          story.id === storyId 
             ? {
                 ...story,
                 client_id: parseInt(formData.get('client_id')),
@@ -667,12 +753,14 @@ function App() {
                 assignee: formData.get('assignee') || null,
                 details: formData.get('details') || null,
                 story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-                assigned_to: editingStory.assigned_to || [],
-                sub_tasks: editingStory.sub_tasks || [],
-                images: editingStory.images || []
+                assigned_to: currentAssignedTo,
+                sub_tasks: currentSubTasks,
+                images: currentImages
               }
             : story
         ))
+        // Clear editing subtasks state
+        setEditingSubTasks([])
         setEditingStory(null)
         return
       }
@@ -690,46 +778,109 @@ function App() {
         assignee: formData.get('assignee') || null,
         details: formData.get('details') || null,
         story_points: formData.get('storyPoints') ? parseInt(formData.get('storyPoints')) : null,
-        assigned_to: editingStory.assigned_to || []
+        assigned_to: currentAssignedTo
       }
       // Solo agregar images si existen
-      if (Array.isArray(editingStory?.images) && editingStory.images.length > 0) {
-        updatePayload.images = editingStory.images
+      if (Array.isArray(currentImages) && currentImages.length > 0) {
+        updatePayload.images = currentImages
       }
       const { error: updateError } = await supabase
         .from('user_stories')
         .update(updatePayload)
-        .eq('id', editingStory.id)
+        .eq('id', storyId)
       
       if (updateError) throw updateError
       
       // Manejar subtasks por separado: borrar e insertar los nuevos válidos si existen
-      if (Array.isArray(editingStory?.sub_tasks)) {
-        const validUpdateSubTasks = editingStory.sub_tasks
-          .filter(st => st && st.title && String(st.title).trim() !== '')
-          .map(st => ({
-            user_story_id: editingStory.id,
-            title: String(st.title).trim(),
-            description: st.description || null,
-            completed: !!st.completed
-          }))
-        // Borrar existentes siempre, luego insertar solo si hay válidos
-        await supabase.from('subtasks').delete().eq('user_story_id', editingStory.id)
-        if (validUpdateSubTasks.length > 0) {
-          const { error: subtasksError } = await supabase
-            .from('subtasks')
-            .insert(validUpdateSubTasks)
-          if (subtasksError) {
-            console.error('Error updating subtasks:', subtasksError)
-          }
+      console.log('[DIAGNOSTIC] Starting subtasks handling', {
+        currentSubTasksCount: currentSubTasks.length,
+        currentSubTasks
+      })
+      
+      try {
+        // First, delete all existing subtasks for this story
+        console.log('[DIAGNOSTIC] Deleting existing subtasks for storyId:', storyId)
+        const { error: deleteError } = await supabase
+          .from('subtasks')
+          .delete()
+          .eq('user_story_id', storyId)
+        
+        if (deleteError) {
+          console.error('[DIAGNOSTIC] Error deleting subtasks:', deleteError)
+        } else {
+          console.log('[DIAGNOSTIC] Successfully deleted existing subtasks')
         }
+        
+        // Then insert the new/updated subtasks if they exist
+        if (Array.isArray(currentSubTasks) && currentSubTasks.length > 0) {
+          console.log('[DIAGNOSTIC] Processing subtasks before filter:', {
+            count: currentSubTasks.length,
+            subtasks: currentSubTasks.map(st => ({
+              id: st.id,
+              title: st.title,
+              titleType: typeof st.title,
+              titleLength: st.title?.length || 0,
+              titleTrimmed: String(st.title || '').trim(),
+              titleTrimmedLength: String(st.title || '').trim().length
+            }))
+          })
+          
+          const validUpdateSubTasks = currentSubTasks
+            .filter(st => {
+              const hasTitle = st && st.title && String(st.title).trim() !== '';
+              if (!hasTitle) {
+                console.log('[DIAGNOSTIC] Filtered out subtask (no title):', st);
+              }
+              return hasTitle;
+            })
+            .map(st => ({
+              user_story_id: storyId,
+              title: String(st.title).trim(),
+              description: st.description || null,
+              completed: !!st.completed
+            }))
+          
+          console.log('[DIAGNOSTIC] Valid subtasks to insert:', {
+            count: validUpdateSubTasks.length,
+            subtasks: validUpdateSubTasks
+          })
+          
+          if (validUpdateSubTasks.length > 0) {
+            console.log('[DIAGNOSTIC] Inserting subtasks...')
+            const { error: insertError } = await supabase
+              .from('subtasks')
+              .insert(validUpdateSubTasks)
+            
+            if (insertError) {
+              console.error('[DIAGNOSTIC] Error inserting subtasks:', insertError)
+            } else {
+              console.log('[DIAGNOSTIC] Successfully inserted subtasks')
+            }
+          }
+        } else {
+          console.log('[DIAGNOSTIC] No subtasks to insert')
+        }
+      } catch (subtaskError) {
+        console.error('[DIAGNOSTIC] Error handling subtasks:', subtaskError)
+        // Don't throw - allow story to save even if subtasks fail
       }
       
-      // Recargar datos desde Supabase
+      console.log('[DIAGNOSTIC] About to call loadData()')
+      // Recargar datos ANTES de cerrar el modal para asegurar que todo se guardó
       await loadData()
+      console.log('[DIAGNOSTIC] loadData() completed')
+      
+      // Close modal AFTER all operations complete successfully
+      console.log('[DIAGNOSTIC] About to close modal (setEditingStory(null))')
+      // Clear editing subtasks state
+      setEditingSubTasks([])
       setEditingStory(null)
+      console.log('[DIAGNOSTIC] Modal closed')
     } catch (err) {
+      console.error('[DIAGNOSTIC] Error updating user story:', err)
       setError(err.message)
+      // DON'T close modal on error - let user try again
+      // setEditingStory(null) is NOT called here
     }
   }
 
@@ -966,7 +1117,10 @@ function App() {
               Agregar Cliente
             </button>
             <button
-              onClick={() => setShowStoryForm(true)}
+              onClick={() => {
+                resetForm()
+                setShowStoryForm(true)
+              }}
               className="px-5 py-2.5 bg-primary text-white rounded-lg font-medium hover:bg-opacity-90 transition-all duration-200 flex items-center gap-2 shadow-sm"
             >
               <Plus className="w-4 h-4" />
@@ -1037,6 +1191,21 @@ function App() {
               <AlertCircle className="w-8 h-8 text-gray-600" />
             </div>
           </div>
+        </div>
+
+        {/* Filtro de Cliente */}
+        <div className="mb-4 flex items-center gap-3">
+          <label className="font-semibold text-gray-700">Filtrar por cliente:</label>
+          <select 
+            value={selectedClientFilter} 
+            onChange={(e) => setSelectedClientFilter(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-2 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary"
+          >
+            <option value="all">Todos los clientes</option>
+            {clients.map(client => (
+              <option key={client.id} value={client.id}>{client.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Controles */}
@@ -1304,6 +1473,7 @@ function App() {
                 </h2>
                 <button
                   onClick={() => {
+                    resetForm();
                     setShowStoryForm(false);
                     setSelectedParkingItem(null);
                   }}
@@ -1493,10 +1663,22 @@ function App() {
                   onUpdateImages={setFormImages}
                 />
                 
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                    <p className="text-sm font-medium">Error al crear: {error}</p>
+                    <p className="text-xs mt-1">Por favor, verifica los datos e intenta de nuevo.</p>
+                  </div>
+                )}
+                
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setShowStoryForm(false)}
+                    onClick={() => {
+                      resetForm();
+                      setShowStoryForm(false);
+                      setSelectedParkingItem(null);
+                      setError(null);
+                    }}
                     className="flex-1 border border-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200"
                   >
                     Cancelar
@@ -1520,7 +1702,10 @@ function App() {
               <div className="flex justify-between items-center p-6 border-b border-gray-100">
                 <h2 className="text-xl font-semibold text-gray-900">Editar User Story</h2>
                 <button
-                  onClick={() => setEditingStory(null)}
+                  onClick={() => {
+                    setEditingSubTasks([])
+                    setEditingStory(null)
+                  }}
                   className="text-gray-400 hover:text-gray-600"
                 >
                   <X className="w-6 h-6" />
@@ -1528,9 +1713,27 @@ function App() {
               </div>
               
               <form 
-                onSubmit={(e) => {
+                onSubmit={async (e) => {
                   e.preventDefault()
-                  handleEditStory(new FormData(e.target))
+                  e.stopPropagation()
+                  
+                  // Prevent double submission
+                  const submitButton = e.target.querySelector('button[type="submit"]')
+                  if (submitButton) {
+                    submitButton.disabled = true
+                    submitButton.textContent = 'Guardando...'
+                  }
+                  
+                  try {
+                    await handleEditStory(new FormData(e.target))
+                  } catch (err) {
+                    console.error('Form submit error:', err)
+                    // Re-enable button on error
+                    if (submitButton) {
+                      submitButton.disabled = false
+                      submitButton.textContent = 'Guardar Cambios'
+                    }
+                  }
                 }}
                 className="p-6 space-y-4"
               >
@@ -1702,8 +1905,8 @@ function App() {
                 />
                 
                 <SubTasks
-                  subTasks={editingStory.sub_tasks || []}
-                  onUpdateSubTasks={(subTasks) => setEditingStory({...editingStory, sub_tasks: subTasks})}
+                  subTasks={editingSubTasks}
+                  onUpdateSubTasks={updateEditingSubTasks}
                 />
                 
                 <ImageAttachments
@@ -1711,10 +1914,21 @@ function App() {
                   onUpdateImages={(images) => setEditingStory({...editingStory, images: images})}
                 />
                 
+                {error && (
+                  <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+                    <p className="text-sm font-medium">Error al guardar: {error}</p>
+                    <p className="text-xs mt-1">Por favor, verifica los datos e intenta de nuevo.</p>
+                  </div>
+                )}
+                
                 <div className="flex gap-3 pt-4">
                   <button
                     type="button"
-                    onClick={() => setEditingStory(null)}
+                    onClick={() => {
+                      setEditingSubTasks([])
+                      setEditingStory(null)
+                      setError(null)
+                    }}
                     className="flex-1 border border-gray-200 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-all duration-200"
                   >
                     Cancelar

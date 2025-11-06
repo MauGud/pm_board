@@ -29,7 +29,7 @@ export default function SubTasks({
     
     const newSubTask = {
       id: generateSubTaskId(),
-      title: '',
+      title: 'Nueva subtarea',  // Default title instead of empty
       completed: false,
       order: subTasks.length
     };
@@ -39,19 +39,27 @@ export default function SubTasks({
     
     // Start editing the new sub-task
     setEditingId(newSubTask.id);
-    setEditingTitle('');
+    setEditingTitle('Nueva subtarea');  // Set default title in edit state too
   };
 
   // Update sub-task title
   const handleUpdateTitle = (id, newTitle) => {
-    if (!newTitle.trim()) {
-      // If empty, remove the sub-task
-      handleDeleteSubTask(id);
+    const trimmedTitle = newTitle.trim();
+    
+    // If empty, ask user to confirm deletion
+    if (!trimmedTitle) {
+      if (confirm('¿Eliminar esta subtarea?')) {
+        handleDeleteSubTask(id);
+      } else {
+        // Cancel edit and restore previous title
+        const previousTitle = subTasks.find(st => st.id === id)?.title || '';
+        setEditingTitle(previousTitle);
+      }
       return;
     }
     
     const updatedSubTasks = subTasks.map(subTask =>
-      subTask.id === id ? { ...subTask, title: newTitle.trim() } : subTask
+      subTask.id === id ? { ...subTask, title: trimmedTitle } : subTask
     );
     onUpdateSubTasks(updatedSubTasks);
     setEditingId(null);
@@ -153,7 +161,16 @@ export default function SubTasks({
         </h4>
         {!disabled && (
           <button
-            onClick={handleAddSubTask}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              handleAddSubTask();
+            }}
+            type="button"
             className="flex items-center gap-1 px-2 py-1 text-xs text-primary hover:bg-purple-50 rounded transition-colors"
             title="Agregar sub-tarea"
           >
@@ -189,7 +206,16 @@ export default function SubTasks({
 
               {/* Checkbox */}
               <button
-                onClick={() => handleToggleComplete(subTask.id)}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  handleToggleComplete(subTask.id);
+                }}
+                type="button"
                 disabled={disabled}
                 className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-all duration-200 ${
                   subTask.completed
@@ -219,14 +245,28 @@ export default function SubTasks({
                     placeholder="Título de la sub-tarea..."
                   />
                   <button
-                    onClick={() => handleUpdateTitle(subTask.id, editingTitle)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleUpdateTitle(subTask.id, editingTitle);
+                    }}
+                    type="button"
                     className="p-1 text-green-600 hover:bg-green-50 rounded"
                     title="Guardar"
                   >
                     <Save size={12} />
                   </button>
                   <button
-                    onClick={handleCancelEdit}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleCancelEdit();
+                    }}
+                    type="button"
                     className="p-1 text-gray-400 hover:bg-gray-50 rounded"
                     title="Cancelar"
                   >
@@ -247,14 +287,32 @@ export default function SubTasks({
                   {!disabled && (
                     <div className="flex items-center gap-1">
                       <button
-                        onClick={() => handleStartEdit(subTask)}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleStartEdit(subTask);
+                        }}
+                        type="button"
                         className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded"
                         title="Editar"
                       >
                         <Edit3 size={12} />
                       </button>
                       <button
-                        onClick={() => handleDeleteSubTask(subTask.id)}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteSubTask(subTask.id);
+                        }}
+                        type="button"
                         className="p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
                         title="Eliminar"
                       >
